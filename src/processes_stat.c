@@ -20,7 +20,7 @@ Array running_processes() {
     while((dirEntry = readdir(srcdir)) != NULL) {
         if (!is_pid_dir(dirEntry)) continue;
         
-        Proc currProc = malloc(sizeof(struct process));                               
+        Proc currProc = malloc(sizeof(struct process));                    
         currProc->PID = atoi(dirEntry->d_name);
         stat_parsing(currProc, dirEntry->d_name);
         statm_parsing(currProc, dirEntry->d_name);
