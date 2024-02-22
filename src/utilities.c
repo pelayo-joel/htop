@@ -62,33 +62,32 @@ void destroy(List list) {
 
 
 // Generic dynamic array implementations
-void init_array(Array self) {
+void init_array(Array self, size_t selfCapacity) {
     self->size = 0;
-    self->array = malloc(sizeof(void*));
+    self->capacity = selfCapacity;
+    self->array = malloc(selfCapacity);
 }
 
-void push_back(Array self, void* newData, size_t newDataType) {
+void push_back(Array self, void* newData) {
     self->size++;
-    void* startTmp = realloc(self->array, newDataType * (self->size + 1));
+    void* startTmp = realloc(self->array, self->capacity * (self->size + 1));
     
     if(!startTmp) {
         printf("Error on realloc");
         exit(3);
     }
     self->array = startTmp;
-    memcpy(self->array+(newDataType * (self->size - 1)), newData, newDataType);
-    // Proc stored = (Proc) self->array+(self->size - 1);
-    // printf("StoredPID: %d\n", stored->PID);
+    memcpy(self->array+(self->capacity * (self->size - 1)), newData, self->capacity);
 }
 
 void remove_from_array(Array self, int index) {
-    void* tmp = malloc(self->size - 1 * sizeof(void*));
+    void* tmp = malloc(self->capacity * (self->size - 1));
 
     if (index != 0) {
-        memcpy(tmp, self->array, sizeof(void*) * index);
+        memcpy(tmp, self->array, self->capacity * index);
     }
     if (index != self->size - 1) {
-        memcpy(tmp+index, self->array+index+1, sizeof(void*) * (self->size - index - 1));
+        memcpy(tmp+index, self->array+index+1, self->capacity * (self->size - index - 1));
     }
     self->array = tmp;
 }

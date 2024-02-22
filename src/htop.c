@@ -3,429 +3,256 @@
 #include <unistd.h>
 #include <time.h>
 #include <ncurses.h>
+#include <sys/sysinfo.h>
+#include <signal.h>
 
 #include "../include/htop.h"
 #include "../include/processes_stat.h"
 #include "../include/utilities.h"
 
 
-#define DEBUG_PROCESS
-// #define GPT_HTOP_NOSCROLL
-// #define GPT_HTOP_SCROLL
-// #define GPT_HTOP_SCROLLANDHEADER
+
+#define MAX_CORES 32
+#define GAUGE_WIDTH 22
 #define MY_HTOP
-
-
-
 #ifdef MY_HTOP
-int main() {
-    Array processes = running_processes();
-    Proc allProcesses = (Proc) processes->array;
-    
-    #ifdef DEBUG_PROCESS
-    printf("PID\tPriority\tNiceness\tVIRT\tRES\tSHR\tutime\tstime\tstart\tState\tCommand\n");
-    #endif
-    for (int i = 0; i < processes->size; i++) {
-        #ifdef DEBUG_PROCESS
-        printf("%d\t%d\t        %d\t        %ld\t%ld\t%ld\t%ld\t%ld\t%ld\t%c\t%s\n", 
-            allProcesses->PID, allProcesses->priority, allProcesses->niceness,
-            allProcesses->virt_usg, allProcesses->res_usg, allProcesses->shr_usg,
-            allProcesses->proc_utime, allProcesses->proc_stime, allProcesses->proc_startTime,
-            allProcesses->state, allProcesses->command);
-        #endif
-        allProcesses++;
-    }
-
-    // initscr();
-    // start_color();
-    // init_pair(1, COLOR_RED, COLOR_BLACK);
-    // mvprintw(1, 4, "%c", '[');
-    // attron(COLOR_PAIR(1));
-    // for (int i = 6; i < 52; i++) {
-    //     mvprintw(1, i, "%c", '|');
-    // }
-    // attroff(COLOR_PAIR(1));
-    // mvprintw(1, 53, "%c", ']');
-    // refresh();
-    // getch();
-    // endwin();
-    return 0;
-}
-#endif
 
 
-
-
-
-#define MAX_PROCESSES 1000
-#define MAX_PROCESS_NAME_LEN 256
-
-#ifdef GPT_HTOP_NOSCROLL
-typedef struct {
-    char name[MAX_PROCESS_NAME_LEN];
-    int pid;
-    float cpu_usage;
-    float mem_usage;
-} ProcessInfo;
-
-ProcessInfo processes[MAX_PROCESSES];
-int num_processes = 0;
+Array processesArray = NULL;
+Proc processes;
+int num_processes;
 int scroll_offset = 0;
 int selected_index = 0;
+int sort_property = 0;
 
-void get_process_info() {
-    FILE *fp = popen("ps aux", "r");
-    if (fp == NULL) {
-        perror("Error running ps aux");
-        exit(1);
-    }
-
-    // Ignore the first line (header)
-    char buffer[1024];
-    fgets(buffer, sizeof(buffer), fp);
-
-    num_processes = 0;
-    while (fgets(buffer, sizeof(buffer), fp) && num_processes < MAX_PROCESSES) {
-        char name[MAX_PROCESS_NAME_LEN];
-        int pid;
-        float cpu_usage, mem_usage;
-
-        sscanf(buffer, "%*s %d %*s %*s %*s %*s %*s %*s %*s %f %f %*s %s", &pid, &cpu_usage, &mem_usage, name);
-
-        strncpy(processes[num_processes].name, name, MAX_PROCESS_NAME_LEN);
-        processes[num_processes].pid = pid;
-        processes[num_processes].cpu_usage = cpu_usage;
-        processes[num_processes].mem_usage = mem_usage;
-
-        num_processes++;
-    }
-
-    pclose(fp);
-}
-
-void print_process_list() {
-    clear();
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    printw("%-10s %-10s %-10s %-s\n", "PID", "CPU%", "MEM%", "COMMAND");
-    int display_count = 0;
-    for (int i = scroll_offset; i < num_processes && display_count < max_y - 1; ++i) {
-        if (i == selected_index)
-            attron(A_REVERSE);
-        printw("%-10d %-10.2f %-10.2f %-s\n", processes[i].pid, processes[i].cpu_usage, processes[i].mem_usage, processes[i].name);
-        if (i == selected_index)
-            attroff(A_REVERSE);
-        display_count++;
-    }
-    refresh();
-}
-
-void handle_input() {
-    int ch = getch();
-    switch (ch) {
-        case KEY_UP:
-            if (selected_index > 0) {
-                selected_index--;
-                if (selected_index < scroll_offset)
-                    scroll_offset--;
-            }
-            break;
-        case KEY_DOWN:
-            if (selected_index < num_processes - 1) {
-                selected_index++;
-                int max_y, max_x;
-                getmaxyx(stdscr, max_y, max_x);
-                if (selected_index >= scroll_offset + max_y - 1)
-                    scroll_offset++;
-            }
-            break;
-        case 'q':
-            endwin();
-            exit(0);
-            break;
-    }
-}
-
-int main() {
-    initscr(); // Initialize ncurses
-    curs_set(0); // Hide cursor
-    noecho(); // Don't echo input
-    keypad(stdscr, TRUE); // Enable keypad
-
-    while (1) {
-        get_process_info();
-        print_process_list();
-        handle_input();
-        usleep(5000); // Update every half second
-    }
-
-    endwin(); // End ncurses
-    return 0;
-}
-#endif
+enum {
+    COLOR_DEFAULT = 1,
+    COLOR_SELECTED = 2
+};
 
 
 
-
-
-#ifdef GPT_HTOP_SCROLL
-#include <ncurses.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-
-#define MAX_PROCESSES 1000
-#define MAX_COMMAND_LEN 256
-
-typedef struct processe {
-    int PID;
-    int priority;
-    int niceness;
-    char* processUser;
-    long virt_usg;
-    long res_usg;
-    long shr_usg;
-    long proc_utime;
-    long proc_stime;
-    long proc_startTime;
-    char state;
-    char* command;
-} Process;
-
-Process processes[MAX_PROCESSES];
-int num_processes = 0;
-int scroll_offset = 0;
-int selected_index = 0;
-
-void get_process_info() {
-    FILE *fp = popen("ps -e -o pid,pri,ni,user,vsz,rss,pmem,utime,stime,start,state,cmd --sort=-pcpu", "r");
-    if (fp == NULL) {
-        perror("Error running ps");
-        exit(1);
-    }
-
-    // Ignore the first line (header)
-    char buffer[1024];
-    fgets(buffer, sizeof(buffer), fp);
-
-    num_processes = 0;
-    while (fgets(buffer, sizeof(buffer), fp) && num_processes < MAX_PROCESSES) {
-        Process proc;
-        proc.command = malloc(MAX_COMMAND_LEN);
-        sscanf(buffer, "%d %d %d %s %ld %ld %ld %ld %ld %ld %c %s",
-               &proc.PID, &proc.priority, &proc.niceness, proc.processUser,
-               &proc.virt_usg, &proc.res_usg, &proc.shr_usg, &proc.proc_utime,
-               &proc.proc_stime, &proc.proc_startTime, &proc.state, proc.command);
-
-        processes[num_processes++] = proc;
-    }
-
-    pclose(fp);
-}
-
-void print_process_list() {
-    clear();
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    printw("%-10s %-5s %-5s %-15s %-10s %-10s %-10s %-10s %-10s %-10s %-5s %-s\n",
-           "PID", "PRI", "NI", "USER", "VIRT", "RES", "SHR", "UTIME", "STIME", "START", "S", "COMMAND");
-    int display_count = 0;
-    for (int i = scroll_offset; i < num_processes && display_count < max_y - 1; ++i) {
-        if (i == selected_index)
-            attron(A_REVERSE);
-        printw("%-10d %-5d %-5d %-15s %-10ld %-10ld %-10ld %-10ld %-10ld %-10ld %-5c %-s\n",
-               processes[i].PID, processes[i].priority, processes[i].niceness,
-               processes[i].processUser, processes[i].virt_usg, processes[i].res_usg,
-               processes[i].shr_usg, processes[i].proc_utime, processes[i].proc_stime,
-               processes[i].proc_startTime, processes[i].state, processes[i].command);
-        if (i == selected_index)
-            attroff(A_REVERSE);
-        display_count++;
-    }
-    refresh();
-}
-
-void handle_input() {
-    int ch = getch();
-    switch (ch) {
-        case KEY_UP:
-            if (selected_index > 0) {
-                selected_index--;
-                if (selected_index < scroll_offset)
-                    scroll_offset--;
-            }
-            break;
-        case KEY_DOWN:
-            if (selected_index < num_processes - 1) {
-                selected_index++;
-                int max_y, max_x;
-                getmaxyx(stdscr, max_y, max_x);
-                if (selected_index >= scroll_offset + max_y - 1)
-                    scroll_offset++;
-            }
-            break;
-        case 'q':
-            endwin();
-            exit(0);
-            break;
-    }
-}
-
-int main() {
-    initscr(); // Initialize ncurses
-    // curs_set(0); // Hide cursor
-    noecho(); // Don't echo input
-    keypad(stdscr, TRUE); // Enable keypad
-
-    while (1) {
-        get_process_info();
-        print_process_list();
-        handle_input();
-        usleep(5000); // Update every half second
-    }
-
-    endwin(); // End ncurses
-    return 0;
-}
-#endif
-
-
-
-
-
-#ifdef GPT_HTOP_SCROLLANDHEADER
-#include <ncurses.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/sysinfo.h> // For getting system information
-
-#define MAX_PROCESSES 1000
-#define MAX_COMMAND_LEN 256
-
-typedef struct processus {
-    int PID;
-    int priority;
-    int niceness;
-    char* processUser;
-    long virt_usg;
-    long res_usg;
-    long shr_usg;
-    long proc_utime;
-    long proc_stime;
-    long proc_startTime;
-    char state;
-    char* command;
-} Process;
-
-Process processes[MAX_PROCESSES];
-int num_processes = 0;
-int scroll_offset = 0;
-int selected_index = 0;
-
-void get_process_info() {
-    FILE *fp = popen("ps -e -o pid,pri,ni,user,vsz,rss,pmem,utime,stime,start,state,cmd --sort=-pcpu", "r");
-    if (fp == NULL) {
-        perror("Error running ps");
-        exit(1);
-    }
-
-    // Ignore the first line (header)
-    char buffer[1024];
-    fgets(buffer, sizeof(buffer), fp);
-
-    num_processes = 0;
-    while (fgets(buffer, sizeof(buffer), fp) && num_processes < MAX_PROCESSES) {
-        Process proc;
-        proc.command = malloc(MAX_COMMAND_LEN);
-        sscanf(buffer, "%d %d %d %s %ld %ld %ld %ld %ld %ld %c %s",
-               &proc.PID, &proc.priority, &proc.niceness, proc.processUser,
-               &proc.virt_usg, &proc.res_usg, &proc.shr_usg, &proc.proc_utime,
-               &proc.proc_stime, &proc.proc_startTime, &proc.state, proc.command);
-
-        processes[num_processes++] = proc;
-    }
-
-    pclose(fp);
-}
-
-void print_machine_info() {
+void mem_usage() {
     struct sysinfo info;
     sysinfo(&info);
 
-    printw("System Info:\n");
-    printw("  Load Average: %.2f, %.2f, %.2f\n", info.loads[0] / 65536.0, info.loads[1] / 65536.0, info.loads[2] / 65536.0);
-    printw("  Total RAM: %lu MB\n", info.totalram / (1024 * 1024));
-    printw("  Free RAM: %lu MB\n", info.freeram / (1024 * 1024));
-    printw("  Number of Processes: %d\n", info.procs);
-    printw("  Number of Threads: %d\n", info.procs);
+    printw("    Total RAM: %lu MB\t\t\t\t\t\t\tNumber of Processes: %d\n", info.totalram / (1024 * 1024), info.procs);
+    printw("    Free RAM: %lu MB\t\t\t\t\t\t\tNumber of Threads: %d\n", info.freeram / (1024 * 1024), info.procs);
+    // printw("    Number of Processes: %d\n", info.procs);
+    // printw("    Number of Threads: %d\n", info.procs);
+    printw("    \t\t\t\t\t\t\t\t\tLoad Average: %.2f, %.2f, %.2f\n", info.loads[0] / 65536.0, info.loads[1] / 65536.0, info.loads[2] / 65536.0);
     printw("\n");
+    refresh();
+}
+
+// void sort_processes() {
+//     qsort(processes, num_processes, sizeof(Proc), compare_proc);
+// }
+
+// int compare_proc(const void* a, const void* b) {
+//     Proc* proc1 = (Proc*)a;
+//     Proc* proc2 = (Proc*)b;
+
+//     switch (sort_property) {
+//         case 0: // Sort by PID
+//             return proc1->PID - proc2->PID;
+//         case 1: // Sort by priority
+//             return proc1->priority - proc2->priority;
+//         case 2: // Sort by niceness
+//             return proc1->niceness - proc2->niceness;
+//         case 3: // Sort by virtual memory usage
+//             return proc1->virt_usg - proc2->virt_usg;
+//         case 4: // Sort by resident memory usage
+//             return proc1->res_usg - proc2->res_usg;
+//         case 5: // Sort by shared memory usage
+//             return proc1->shr_usg - proc2->shr_usg;
+//         // Add more cases for additional sorting options as needed
+//         default:
+//             return 0; // Default to no sorting
+//     }
+// }
+
+// void handle_sort_input(int ch) {
+//     switch (ch) {
+//         case '1':
+//             sort_property = 0; // Sort by PID
+//             break;
+//         case '2':
+//             sort_property = 1; // Sort by priority
+//             break;
+//         case '3':
+//             sort_property = 2; // Sort by niceness
+//             break;
+//         case '4':
+//             sort_property = 3; // Sort by virtual memory usage
+//             break;
+//         case '5':
+//             sort_property = 4; // Sort by resident memory usage
+//             break;
+//         case '6':
+//             sort_property = 5; // Sort by shared memory usage
+//             break;
+//         // Add more cases for additional sorting options as needed
+//     }
+// }
+
+void processes_stats() {
+    // Assuming you have a function named "retrieve_process_stats" that fills the dynamic array "processes"
+    // This function retrieves process stats and updates the global "num_processes" variable
+    if (!processesArray) {
+        processesArray = malloc(sizeof(struct array));
+    }
+    running_processes(processesArray);
+    processes = (Proc) processesArray->array;
+    num_processes = processesArray->size;
+    // sort_processes();
+}
+
+// Function to print the header with CPU usage gauges using ncurses
+void print_header(int num_cores, double* cpu_usage) {
+    clear();
+    printw("\n");
+    
+    int num_rows = num_cores / 4 + (num_cores % 4 != 0); // Calculate number of rows for gauges
+    for (int i = 0; i < num_rows; ++i) {
+        printw("    ");
+        for (int j = 0; j < 4 && i * 4 + j < num_cores; ++j) {
+            int core_id = i * 4 + j;
+            if (core_id < 10) printw(" %d[", core_id); 
+            else printw("%d[", core_id);
+            // Print the gauge based on CPU usage percentage
+            for (int k = 0; k < GAUGE_WIDTH; ++k) {
+                if (k < cpu_usage[core_id] / (100 / GAUGE_WIDTH)) {
+                    printw("|");
+                } else {
+                    printw(" ");
+                }
+            }
+            printw("%.1f%%]\t", cpu_usage[core_id]);
+        }
+        printw("\n");
+    }
+    mem_usage();
 }
 
 void print_process_list() {
-    clear();
-    print_machine_info();
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    printw("%-10s %-5s %-5s %-15s %-10s %-10s %-10s %-10s %-10s %-10s %-5s %-s\n",
-           "PID", "PRI", "NI", "USER", "VIRT", "RES", "SHR", "UTIME", "STIME", "START", "S", "COMMAND");
+    // clear();
+    // print_system_info();
+    int max_y = getmaxy(stdscr);
+
+    attron(COLOR_PAIR(COLOR_SELECTED));
+    printw("    %-5s %-10s %-3s %-3s %-7s %-7s %-7s %-2s %-5s %-5s %-s %*s\n",
+           "PID", "USER", "PRI", "NI", "VIRT", "RES", "SHR", "S", "CPU", "TIME", "COMMAND", 63, "");
+    attroff(COLOR_PAIR(COLOR_SELECTED));
+    
     int display_count = 0;
     for (int i = scroll_offset; i < num_processes && display_count < max_y - 6; ++i) {
-        if (i == selected_index)
+        char* procTimeFormatted = strformat_ms_time(processes[i].proc_usgInSec);
+        if (i == selected_index) {
             attron(A_REVERSE);
-        printw("%-10d %-5d %-5d %-15s %-10ld %-10ld %-10ld %-10ld %-10ld %-10ld %-5c %-s\n",
-               processes[i].PID, processes[i].priority, processes[i].niceness,
-               processes[i].processUser, processes[i].virt_usg, processes[i].res_usg,
-               processes[i].shr_usg, processes[i].proc_utime, processes[i].proc_stime,
-               processes[i].proc_startTime, processes[i].state, processes[i].command);
-        if (i == selected_index)
-            attroff(A_REVERSE);
+        }
+        printw("    %-5d %-10s %-3d %-3d %-7ld %-7ld %-7ld %-2c %-5.1f %-5s %-s\n",
+            processes[i].PID, processes[i].processUser, processes[i].priority,
+            processes[i].niceness, processes[i].virt_usg, processes[i].res_usg,
+            processes[i].shr_usg, processes[i].state, (float)(processes[i].proc_usgInSec * 100) / processes[i].proc_elapsedSec,
+            procTimeFormatted, processes[i].command);
+    // if (i == selected_index)
+        attroff(A_REVERSE);
         display_count++;
     }
     refresh();
 }
 
+void print_input_legend() {
+    int max_y, max_x, iCol = 0, commandIndex = 0;
+    char inputList[] = {'q', 'k'};
+    char* commandList[] = {"QUIT", "KILL"};
+    int nCommand = sizeof(commandList) / sizeof(commandList[0]);
+    getmaxyx(stdscr, max_y, max_x);
+
+    // Print the legend at the bottom of the screen
+    while (iCol < max_x && commandIndex < nCommand) {
+        mvprintw(max_y - 1, iCol+1, "%c", inputList[commandIndex]);
+        attron(COLOR_PAIR(COLOR_SELECTED));
+        mvprintw(max_y - 1, iCol+2, "%s", commandList[commandIndex]);
+        attroff(COLOR_PAIR(COLOR_SELECTED));
+        commandIndex++;
+        iCol += 5;
+    }
+    attron(COLOR_PAIR(COLOR_SELECTED));
+    mvprintw(max_y - 1, iCol+1, "%*s", max_x - iCol, "");
+    attroff(COLOR_PAIR(COLOR_SELECTED));
+    // mvprintw(max_y - 1, 0, "Press arrow keys to navigate, 'k' to kill process");
+    // mvprintw(max_y - 1, max_x - 30, "Press 1-6 to sort by property");
+}
+
 void handle_input() {
     int ch = getch();
+    int max_y = getmaxy(stdscr);
     switch (ch) {
         case KEY_UP:
             if (selected_index > 0) {
                 selected_index--;
                 if (selected_index < scroll_offset)
                     scroll_offset--;
+            } else if (selected_index == 0 && scroll_offset > 0) {
+                // If at the top and scroll_offset is greater than 0, scroll up
+                scroll_offset--;
             }
             break;
         case KEY_DOWN:
             if (selected_index < num_processes - 1) {
                 selected_index++;
-                int max_y, max_x;
-                getmaxyx(stdscr, max_y, max_x);
-                if (selected_index >= scroll_offset + max_y - 6)
+                if (selected_index >= scroll_offset + max_y - 1)
                     scroll_offset++;
+            } else if (selected_index == num_processes - 1) {
+                // If at the bottom, scroll down
+                scroll_offset++;
+                refresh();
+            }
+            break;
+        case 'k':
+            if (selected_index >= 0 && selected_index < num_processes) {
+                kill(processes[selected_index].PID, SIGKILL);
+                processes_stats(); // Refresh the process list after killing
+                // print_process_list();
             }
             break;
         case 'q':
             endwin();
             exit(0);
             break;
+        // default:
+        //     handle_sort_input(ch);
+        //     break;
     }
 }
 
+
 int main() {
     initscr(); // Initialize ncurses
+    start_color(); // Enable color
+    init_pair(COLOR_DEFAULT, COLOR_WHITE, COLOR_BLACK); // Define color pair for default text
+    init_pair(COLOR_SELECTED, COLOR_BLACK, COLOR_YELLOW);
     curs_set(0); // Hide cursor
     noecho(); // Don't echo input
     keypad(stdscr, TRUE); // Enable keypad
 
+    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    double* cpu_usage = malloc(sizeof(double) * MAX_CORES);
+
     while (1) {
-        get_process_info();
+        processes_stats();
+        sys_cpu_usage(cpu_usage, num_cores);
+        clear();
+        print_header(num_cores, cpu_usage);
         print_process_list();
+        print_input_legend();
         handle_input();
-        usleep(5000); // Update every half second
+        usleep(10000); // Update every 0.1 second
     }
 
     endwin(); // End ncurses
+
     return 0;
 }
-
-#endif

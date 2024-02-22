@@ -1,6 +1,6 @@
 CC := gcc
 SRC := ./src/*.c
-CFLAGS := -g3
+CFLAGS := -Wall -Wextra -Werror -g3
 DFLAGS := -g
 LDFLAGS := -lncurses
 

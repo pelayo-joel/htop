@@ -25,6 +25,7 @@ struct list {
 
 struct array {
     int size;
+    size_t capacity;
     void* array;
 };
 
@@ -39,9 +40,9 @@ void* get_from(List list, int nNode);
 void destroy(List list);
 
 // Dynamic array definitions
-void init_array(Array self);
+void init_array(Array self, size_t selfCapacity);
 
-void push_back(Array self, void* newData, size_t newDataType);
+void push_back(Array self, void* newData);
 
 void remove_from_array(Array self, int index);
 

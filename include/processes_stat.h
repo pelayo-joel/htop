@@ -27,13 +27,17 @@ struct process {
     long proc_utime;
     long proc_stime;
     long proc_startTime;
+    long proc_elapsedSec;
+    long proc_usgInSec;
     char state;
     char* command;
 };
 
 
 
-Array running_processes();
+void running_processes(Array procArray);
+
+void sys_cpu_usage();
 
 void assign_process();
 
@@ -43,9 +47,15 @@ void statm_parsing(Proc currNewProc, char* currEntry);
 
 void cmdline_parsing(Proc currNewProc, char* currEntry);
 
-char* strformat_hms_time(long seconds);
+void proc_cpu_usage(Proc currProc);
+
+char* get_user_from_euid(uid_t euid);
+
+char* strformat_ms_time(long totalSeconds);
 
 int is_pid_dir(const struct dirent *entry);
+
+int pid_exist(Array procArray, const struct dirent *entry);
 
 
 
